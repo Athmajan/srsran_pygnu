@@ -203,22 +203,41 @@ class athena_wireless_channel(gr.top_block):
 
 
 import time
+def automated_monitoring_thread(tb):    
+    is_file_open = False
+    while (not is_file_open):
+        try:
+            with open(BETA_FIFO, mode = 'wb') as file_write:
+                is_file_open = True
+                print('Opening beta fifo socket successful. Going to sleep')                
+                time.sleep(10) # this sleep is necessary as the echo_to_cpuset and the iperf startup scripts are initiated    
+                loops = 0
+                while (True):
+                    current_gain_level_idx = 0
+                    direction = 1
+                    hit_low_snr_first_time = True
+                    while (1):
+                        tb.set_multiply_level_ue1(gain_levels[current_gain_level_idx])
+                        current_gain_level_bytes = (int(gain_levels[current_gain_level_idx]* 1000)).to_bytes(2, byteorder='little')
+                        file_write.write(current_gain_level_bytes)
+                        file_write.flush()
+                        print('Setting UE Gain level {}'.format(gain_levels[current_gain_level_idx]))
+                        time.sleep(gain_level_duration)
+                        if (current_gain_level_idx + direction == len(gain_levels) or
+                            current_gain_level_idx + direction == -1):
+                            if (current_gain_level_idx == len(gain_levels) - 1 and hit_low_snr_first_time):
+                                hit_low_snr_first_time = False
+                                continue
+                            elif (current_gain_level_idx == 0):
+                                break
+                            direction = -direction
+                        
+                        current_gain_level_idx += direction
+        except FileNotFoundError as e:
+            print('error')
+        finally:
+            print('Gracefully exiting...')
 
-def automated_monitoring_thread(tb):
-    """
-    Sweep UL/DL channel gains and noise for UEs.
-    CPU congestion levels are ignored.
-    """
-
-    # expected globals (already defined somewhere)
-    global gain_levels, gain_level_duration
-
-    while True:
-        for i, gain in enumerate(gain_levels):
-            # ---- Apply channel parameters ----
-            tb.set_multiply_level_ue1(gain)
-            tb.set_multiply_level_ue2(gain)
-            tb.set_multiply_level_ue3(gain)
 
 def main(top_block_cls=athena_wireless_channel, options=None):
     tb = top_block_cls()
